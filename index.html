@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 
-<title>연구실 제습 성능 관리 시스템</title>
+<title>연구실 제습 성능 관리</title>
 
 <style>
 
@@ -82,7 +82,7 @@ h1{
 }
 
 .analysis-box{
-    margin-top:25px;
+    margin-top:30px;
 }
 
 .analysis-title{
@@ -98,7 +98,7 @@ h1{
 
 table{
     width:100%;
-    min-width:1100px;
+    min-width:1200px;
     border-collapse:collapse;
     background:#fff;
 }
@@ -141,6 +141,17 @@ th{
     margin-top:30px;
 }
 
+.weekly-summary{
+    margin-bottom:30px;
+}
+
+.week-title{
+    font-size:16px;
+    font-weight:bold;
+    margin-bottom:10px;
+    color:#1d4ed8;
+}
+
 </style>
 </head>
 
@@ -149,7 +160,7 @@ th{
 <h1>연구실 제습 성능 관리 시스템</h1>
 
 <div class="main-desc">
-인천광역시 중구 북성동1가 기상 정보 / 연구실 제습 성능 분석
+기상 정보 : 인천광역시 중구 북성동1가 / 연구실 제습 성능 분석
 </div>
 
 <div id="app">
@@ -257,7 +268,7 @@ async function init(){
 
 async function fetchWeather(){
 
-    const start = "2026-05-08";
+    const start = "2026-05-01";
 
     const today = new Date();
 
@@ -410,6 +421,20 @@ function makeDailyAverage(hourly){
 
 
 // ========================================
+// 주차 계산
+// ========================================
+
+function getWeekNumber(dateString){
+
+    const day =
+        Number(dateString.split("-")[2]);
+
+    return Math.ceil(day / 7);
+
+}
+
+
+// ========================================
 // 연구실 렌더
 // ========================================
 
@@ -452,6 +477,8 @@ function renderLab(lab, rows){
 
     let dailyHTML = "";
 
+    let weeklyData = {};
+
     weatherRows.forEach(row=>{
 
         const manual =
@@ -488,12 +515,39 @@ function renderLab(lab, rows){
 
             effectCount++;
 
+            const week =
+                getWeekNumber(row.date);
+
+            const weekKey =
+                `${row.month}월 ${week}주차`;
+
+            if(!weeklyData[weekKey]){
+
+                weeklyData[weekKey] = {
+
+                    outdoor:[],
+                    indoor:[],
+                    effect:[],
+                    success:0,
+                    total:0
+
+                };
+
+            }
+
+            weeklyData[weekKey].outdoor.push(row.avgHum);
+            weeklyData[weekKey].indoor.push(currentHum);
+            weeklyData[weekKey].effect.push(effect);
+            weeklyData[weekKey].total++;
+
             if(currentHum <= targetHum){
 
                 result = "목표 달성";
                 cls = "good";
 
                 success++;
+
+                weeklyData[weekKey].success++;
 
             }else{
 
@@ -539,6 +593,49 @@ function renderLab(lab, rows){
         effectCount
         ? Math.round((success/effectCount)*1000)/10
         : "-";
+
+
+// ========================================
+// 주차별 평균 테이블 생성
+// ========================================
+
+    let weeklyHTML = "";
+
+    Object.keys(weeklyData).forEach(week=>{
+
+        const data =
+            weeklyData[week];
+
+        const outdoorAvg =
+            avg(data.outdoor);
+
+        const indoorAvg =
+            avg(data.indoor);
+
+        const effectAvg =
+            avg(data.effect);
+
+        const successAvg =
+            Math.round(
+                (data.success / data.total) * 1000
+            ) / 10;
+
+        weeklyHTML += `
+            <tr>
+                <td>${week}</td>
+                <td>${outdoorAvg}%</td>
+                <td>${indoorAvg}%</td>
+                <td>${effectAvg}%p</td>
+                <td>${successAvg}%</td>
+            </tr>
+        `;
+
+    });
+
+
+// ========================================
+// 화면 출력
+// ========================================
 
     app.innerHTML += `
 
@@ -605,6 +702,42 @@ function renderLab(lab, rows){
                 </div>
 
             </div>
+
+
+            <div class="analysis-box">
+
+                <div class="analysis-title">
+                    주차별 평균 분석
+                </div>
+
+                <div class="table-wrap">
+
+                    <table>
+
+                        <thead>
+
+                            <tr>
+                                <th>주차</th>
+                                <th>평균 외기습도</th>
+                                <th>평균 실내습도</th>
+                                <th>평균 제습효과</th>
+                                <th>목표 달성률</th>
+                            </tr>
+
+                        </thead>
+
+                        <tbody>
+
+                            ${weeklyHTML}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
 
             <div class="analysis-box">
 
