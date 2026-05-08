@@ -126,6 +126,21 @@ th{
     background:#fee2e2;
 }
 
+.error-box{
+    background:#fee2e2;
+    color:#991b1b;
+    padding:20px;
+    border-radius:12px;
+    margin-top:20px;
+    line-height:1.8;
+}
+
+.loading{
+    font-size:18px;
+    color:#666;
+    margin-top:30px;
+}
+
 </style>
 </head>
 
@@ -137,7 +152,11 @@ th{
 인천광역시 중구 개항동 기준 기상정보 및 연구실 제습 성능 분석
 </div>
 
-<div id="app"></div>
+<div id="app">
+    <div class="loading">
+        데이터 불러오는 중...
+    </div>
+</div>
 
 <script>
 
@@ -174,14 +193,58 @@ init();
 
 async function init(){
 
-    await fetchWeather();
+    try{
 
-    for(const lab of labs){
+        await fetchWeather();
 
-        const rows =
-            await loadGoogleSheet(lab.id);
+        document.getElementById("app").innerHTML = "";
 
-        renderLab(lab, rows);
+        for(const lab of labs){
+
+            try{
+
+                const rows =
+                    await loadGoogleSheet(lab.id);
+
+                renderLab(lab, rows);
+
+            }catch(error){
+
+                console.error(
+                    `${lab.id} 시트 로딩 실패`,
+                    error
+                );
+
+                renderErrorLab(lab);
+
+            }
+
+        }
+
+    }catch(error){
+
+        console.error("초기 로딩 실패", error);
+
+        document.getElementById("app").innerHTML =
+            `
+            <div class="error-box">
+
+                데이터 로딩 실패
+                <br><br>
+
+                확인 필요 사항:
+                <br>
+
+                1. Google Sheets 웹 게시 여부
+                <br>
+
+                2. 시트 탭명 일치 여부
+                <br>
+
+                3. Google Sheets 공개 권한 여부
+
+            </div>
+            `;
 
     }
 
@@ -233,6 +296,12 @@ async function loadGoogleSheet(sheetName){
 
     const response = await fetch(url);
 
+    if(!response.ok){
+
+        throw new Error("Google Sheets 조회 실패");
+
+    }
+
     const text = await response.text();
 
     return parseCSV(text);
@@ -250,18 +319,24 @@ function parseCSV(text){
         text.trim().split("\n");
 
     const headers =
-        lines[0].split(",");
+        lines[0]
+        .split(",")
+        .map(h =>
+            h.replace(/"/g,"").trim()
+        );
 
     return lines.slice(1).map(line=>{
 
-        const values = line.split(",");
+        const values =
+            line.split(",").map(v =>
+                v.replace(/"/g,"").trim()
+            );
 
         const obj = {};
 
         headers.forEach((h,i)=>{
 
-            obj[h.trim()] =
-                values[i]?.trim();
+            obj[h] = values[i] || "";
 
         });
 
@@ -347,7 +422,10 @@ function renderLab(lab, rows){
 
     rows.forEach(r=>{
 
-        map[r["날짜"]] = {
+        const date =
+            (r["날짜"] || "").trim();
+
+        map[date] = {
 
             currentHum:
                 Number(r["현재습도"]),
@@ -428,8 +506,8 @@ function renderLab(lab, rows){
                 <td>${row.month}월</td>
                 <td>${row.avgTemp ?? ""}</td>
                 <td>${row.avgHum ?? ""}</td>
-                <td>${currentHum || ""}</td>
-                <td>${targetHum || ""}</td>
+                <td>${!isNaN(currentHum) ? currentHum : ""}</td>
+                <td>${!isNaN(targetHum) ? targetHum : ""}</td>
                 <td>${over}</td>
                 <td>${effect}</td>
                 <td>${result}</td>
@@ -559,6 +637,52 @@ function renderLab(lab, rows){
                     </table>
 
                 </div>
+
+            </div>
+
+        </div>
+
+    `;
+
+}
+
+
+// ========================================
+// 에러 렌더
+// ========================================
+
+function renderErrorLab(lab){
+
+    const app =
+        document.getElementById("app");
+
+    app.innerHTML += `
+
+        <div class="lab-section">
+
+            <div class="lab-title">
+                ${lab.title}
+            </div>
+
+            <div class="lab-subtitle">
+                ${lab.subtitle}
+            </div>
+
+            <div class="error-box">
+
+                Google Sheets 데이터 조회 실패
+                <br><br>
+
+                확인 필요 사항:
+                <br>
+
+                - 시트 탭명 일치 여부
+                <br>
+
+                - 웹 게시 여부
+                <br>
+
+                - 링크 공개 여부
 
             </div>
 
