@@ -98,7 +98,7 @@ h1{
 
 table{
     width:100%;
-    min-width:1000px;
+    min-width:1100px;
     border-collapse:collapse;
     background:#fff;
 }
@@ -118,12 +118,12 @@ th{
     background:#d1fae5;
 }
 
-.warn{
-    background:#fef3c7;
+.bad{
+    background:#fed7aa;
 }
 
-.bad{
-    background:#fee2e2;
+.none{
+    background:#f3f4f6;
 }
 
 .error-box{
@@ -425,13 +425,19 @@ function renderLab(lab, rows){
         const date =
             (r["날짜"] || "").trim();
 
+        const currentHum =
+            Number(r["현재습도"]);
+
+        const targetHum =
+            Number(r["목표습도"]);
+
         map[date] = {
 
             currentHum:
-                Number(r["현재습도"]),
+                currentHum,
 
             targetHum:
-                Number(r["목표습도"])
+                targetHum
 
         };
 
@@ -457,15 +463,18 @@ function renderLab(lab, rows){
         const targetHum =
             manual.targetHum;
 
+        const hasData =
+            !isNaN(currentHum) &&
+            !isNaN(targetHum) &&
+            currentHum !== 0 &&
+            targetHum !== 0;
+
         let effect = "";
         let over = "";
-        let result = "데이터 없음";
-        let cls = "";
+        let result = "미확인";
+        let cls = "none";
 
-        if(
-            !isNaN(currentHum) &&
-            !isNaN(targetHum)
-        ){
+        if(hasData){
 
             effect =
                 Math.round((row.avgHum-currentHum)*10)/10;
@@ -486,14 +495,9 @@ function renderLab(lab, rows){
 
                 success++;
 
-            }else if(currentHum <= targetHum+5){
-
-                result = "주의";
-                cls = "warn";
-
             }else{
 
-                result = "미흡";
+                result = "목표 미달";
                 cls = "bad";
 
             }
@@ -506,10 +510,10 @@ function renderLab(lab, rows){
                 <td>${row.month}월</td>
                 <td>${row.avgTemp ?? ""}</td>
                 <td>${row.avgHum ?? ""}</td>
-                <td>${!isNaN(currentHum) ? currentHum : ""}</td>
-                <td>${!isNaN(targetHum) ? targetHum : ""}</td>
-                <td>${over}</td>
-                <td>${effect}</td>
+                <td>${hasData ? currentHum : ""}</td>
+                <td>${hasData ? targetHum : ""}</td>
+                <td>${hasData ? over : ""}</td>
+                <td>${hasData ? effect : ""}</td>
                 <td>${result}</td>
             </tr>
         `;
