@@ -39,7 +39,7 @@ h1{
 .lab-title{
     font-size:30px;
     font-weight:bold;
-    color:#1d4ed8;
+    color:#1f2937;
 }
 
 .lab-subtitle{
@@ -49,8 +49,8 @@ h1{
 }
 
 .status-box{
-    background:#eff6ff;
-    border:1px solid #bfdbfe;
+    background:#f3f4f6;
+    border:1px solid #d1d5db;
     border-radius:12px;
     padding:15px;
     margin-bottom:20px;
@@ -65,9 +65,10 @@ h1{
 }
 
 .summary-item{
-    background:#f8fafc;
+    background:#f9fafb;
     border-radius:12px;
     padding:15px;
+    border:1px solid #e5e7eb;
 }
 
 .summary-title{
@@ -104,14 +105,15 @@ table{
 }
 
 th, td{
-    border:1px solid #ddd;
+    border:1px solid #d1d5db;
     padding:8px;
     text-align:center;
     font-size:13px;
 }
 
 th{
-    background:#dbeafe;
+    background:#e5e7eb;
+    color:#111827;
 }
 
 .good{
@@ -149,14 +151,14 @@ button{
     padding:10px 16px;
     border:none;
     border-radius:10px;
-    background:#2563eb;
+    background:#4b5563;
     color:white;
     cursor:pointer;
     font-size:14px;
 }
 
 button:hover{
-    background:#1d4ed8;
+    background:#374151;
 }
 
 .update-time{
@@ -196,6 +198,8 @@ button:hover{
 
 const FIXED_LAT = 37.4738;
 const FIXED_LON = 126.6215;
+
+const START_DATE = "2026-05-08";
 
 const SPREADSHEET_ID =
 "1nEYNEW9g9omiNviB8yW4Vjd3TecZlSUBIvmMA9DvIfw";
@@ -262,7 +266,7 @@ async function init(){
 
     }catch(error){
 
-        console.error("초기 로딩 실패", error);
+        console.error(error);
 
         document.getElementById("app").innerHTML =
             `
@@ -296,8 +300,6 @@ async function init(){
 
 async function fetchWeather(){
 
-    const start = "2026-05-08";
-
     const today = new Date();
 
     const end =
@@ -309,7 +311,7 @@ async function fetchWeather(){
         `https://archive-api.open-meteo.com/v1/archive` +
         `?latitude=${FIXED_LAT}` +
         `&longitude=${FIXED_LON}` +
-        `&start_date=${start}` +
+        `&start_date=${START_DATE}` +
         `&end_date=${end}` +
         `&hourly=temperature_2m,relative_humidity_2m` +
         `&timezone=Asia%2FSeoul`;
@@ -337,7 +339,7 @@ async function fetchWeather(){
 async function loadGoogleSheet(sheetName){
 
     const url =
-`https://opensheet.elk.sh/${SPREADSHEET_ID}/${encodeURIComponent(sheetName)}`;
+`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
 
     const response = await fetch(url);
 
@@ -347,9 +349,47 @@ async function loadGoogleSheet(sheetName){
 
     }
 
-    const data = await response.json();
+    const text = await response.text();
 
-    return data;
+    return parseCSV(text);
+
+}
+
+
+// ========================================
+// CSV 파싱
+// ========================================
+
+function parseCSV(text){
+
+    const lines =
+        text.trim().split("\n");
+
+    const headers =
+        lines[0]
+        .split(",")
+        .map(h =>
+            h.replace(/"/g,"").trim()
+        );
+
+    return lines.slice(1).map(line=>{
+
+        const values =
+            line.split(",").map(v =>
+                v.replace(/"/g,"").trim()
+            );
+
+        const obj = {};
+
+        headers.forEach((h,i)=>{
+
+            obj[h] = values[i] || "";
+
+        });
+
+        return obj;
+
+    });
 
 }
 
