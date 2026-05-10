@@ -190,24 +190,22 @@ button:hover{
 </div>
 
 <div id="app">
+
     <div class="loading">
         데이터 불러오는 중...
     </div>
+
 </div>
 
 <script>
 
-window.onerror = function(msg){
-
-    console.error(msg);
-    alert("오류 발생 : " + msg);
-
-};
-
-const FIXED_LAT = 37.4738;
-const FIXED_LON = 126.6215;
-
 const START_DATE = "2026-05-08";
+
+const WEATHER_API =
+"https://api.open-meteo.com/v1/forecast";
+
+const LAT = 37.4738;
+const LON = 126.6215;
 
 const SPREADSHEET_ID =
 "1nEYNEW9g9omiNviB8yW4Vjd3TecZlSUBIvmMA9DvIfw";
@@ -237,7 +235,16 @@ const labs = [
 
 let weatherRows = [];
 
-init();
+window.onload = () => {
+
+    init();
+
+};
+
+
+// ========================================
+// 시작
+// ========================================
 
 async function init(){
 
@@ -248,9 +255,9 @@ async function init(){
             "마지막 업데이트 : " +
             new Date().toLocaleString("ko-KR");
 
-        await fetchWeather();
-
         document.getElementById("app").innerHTML = "";
+
+        await loadWeatherData();
 
         for(const lab of labs){
 
@@ -263,8 +270,6 @@ async function init(){
 
             }catch(error){
 
-                console.error(error);
-
                 renderErrorLab(
                     lab,
                     error.message
@@ -275,8 +280,6 @@ async function init(){
         }
 
     }catch(error){
-
-        console.error(error);
 
         document.getElementById("app").innerHTML =
         `
@@ -296,41 +299,65 @@ async function init(){
 
 
 // ========================================
-// 기상정보 조회
+// 기상 API 조회
 // ========================================
 
-async function fetchWeather(){
+async function loadWeatherData(){
 
     const today = new Date();
 
-    const end =
+    const endDate =
         today.getFullYear() + "-" +
         String(today.getMonth()+1).padStart(2,'0') + "-" +
         String(today.getDate()).padStart(2,'0');
 
     const url =
-        `https://archive-api.open-meteo.com/v1/archive` +
-        `?latitude=${FIXED_LAT}` +
-        `&longitude=${FIXED_LON}` +
+        `${WEATHER_API}` +
+        `?latitude=${LAT}` +
+        `&longitude=${LON}` +
+        `&daily=temperature_2m_mean,relative_humidity_2m_mean` +
+        `&timezone=Asia%2FSeoul` +
         `&start_date=${START_DATE}` +
-        `&end_date=${end}` +
-        `&hourly=temperature_2m,relative_humidity_2m` +
-        `&timezone=Asia%2FSeoul`;
+        `&end_date=${endDate}`;
 
-    const response = await fetch(url);
+    const response =
+        await fetch(url);
 
     if(!response.ok){
 
         throw new Error(
-            "기상정보 조회 실패"
+            "기상 API 조회 실패"
         );
 
     }
 
-    const data = await response.json();
+    const data =
+        await response.json();
+
+    if(!data.daily){
+
+        throw new Error(
+            "기상 데이터 없음"
+        );
+
+    }
 
     weatherRows =
-        makeDailyAverage(data.hourly);
+        data.daily.time.map((date, idx)=>{
+
+            return {
+
+                date:date,
+                month:Number(date.slice(5,7)),
+                avgTemp:
+                    data.daily.temperature_2m_mean[idx],
+
+                avgHum:
+                    data.daily.relative_humidity_2m_mean[idx]
+
+            };
+
+        });
 
 }
 
@@ -344,37 +371,22 @@ async function loadGoogleSheet(sheetName){
     const gid =
         SHEET_GID[sheetName];
 
-    if(!gid){
-
-        throw new Error(
-            `${sheetName} gid 설정 없음`
-        );
-
-    }
-
     const url =
 `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${gid}`;
 
-    const response = await fetch(url);
+    const response =
+        await fetch(url);
 
     if(!response.ok){
 
         throw new Error(
-            `${sheetName} CSV 조회 실패`
+            `${sheetName} 시트 조회 실패`
         );
 
     }
 
     const text =
         await response.text();
-
-    if(!text){
-
-        throw new Error(
-            `${sheetName} 데이터 없음`
-        );
-
-    }
 
     return parseCSV(text);
 
@@ -408,7 +420,8 @@ function parseCSV(text){
 
         headers.forEach((h,i)=>{
 
-            obj[h] = values[i] || "";
+            obj[h] =
+                values[i] || "";
 
         });
 
@@ -425,59 +438,11 @@ function parseCSV(text){
 
 function avg(arr){
 
-    if(!arr.length) return null;
+    if(!arr.length) return "-";
 
     return Math.round(
         (arr.reduce((a,b)=>a+b,0)/arr.length)*10
     )/10;
-
-}
-
-
-// ========================================
-// 일 평균 계산
-// ========================================
-
-function makeDailyAverage(hourly){
-
-    const daily = {};
-
-    hourly.time.forEach((time, idx)=>{
-
-        const date =
-            time.slice(0,10);
-
-        if(!daily[date]){
-
-            daily[date] = {
-                temp:[],
-                hum:[]
-            };
-
-        }
-
-        daily[date].temp.push(
-            hourly.temperature_2m[idx]
-        );
-
-        daily[date].hum.push(
-            hourly.relative_humidity_2m[idx]
-        );
-
-    });
-
-    return Object.keys(daily).map(date=>{
-
-        return {
-
-            date:date,
-            month:Number(date.slice(5,7)),
-            avgTemp:avg(daily[date].temp),
-            avgHum:avg(daily[date].hum)
-
-        };
-
-    });
 
 }
 
@@ -719,7 +684,10 @@ function renderLab(lab, rows){
                 인천광역시 중구 북성동1가
                 <br><br>
 
-                <b>Google Sheets 자동 연동 완료</b>
+                <b>기상정보 API 자동 연동</b>
+                <br>
+
+                Open-Meteo Weather API 기반
 
             </div>
 
