@@ -15,8 +15,9 @@
 body{
     margin:0;
     padding:20px;
-    background:#f4f7fb;
+    background:#f3f4f6;
     font-family:Arial, sans-serif;
+    color:#111827;
 }
 
 h1{
@@ -24,12 +25,12 @@ h1{
 }
 
 .main-desc{
-    color:#666;
+    color:#4b5563;
     margin-bottom:30px;
 }
 
 .lab-section{
-    background:#fff;
+    background:#ffffff;
     border-radius:20px;
     padding:25px;
     margin-bottom:50px;
@@ -39,17 +40,17 @@ h1{
 .lab-title{
     font-size:30px;
     font-weight:bold;
-    color:#1f2937;
+    color:#111827;
 }
 
 .lab-subtitle{
-    color:#666;
+    color:#6b7280;
     margin-top:5px;
     margin-bottom:25px;
 }
 
 .status-box{
-    background:#f3f4f6;
+    background:#f9fafb;
     border:1px solid #d1d5db;
     border-radius:12px;
     padding:15px;
@@ -68,12 +69,12 @@ h1{
     background:#f9fafb;
     border-radius:12px;
     padding:15px;
-    border:1px solid #e5e7eb;
+    border:1px solid #d1d5db;
 }
 
 .summary-title{
     font-size:13px;
-    color:#666;
+    color:#6b7280;
     margin-bottom:8px;
 }
 
@@ -101,7 +102,7 @@ table{
     width:100%;
     min-width:1200px;
     border-collapse:collapse;
-    background:#fff;
+    background:#ffffff;
 }
 
 th, td{
@@ -139,7 +140,7 @@ th{
 
 .loading{
     font-size:18px;
-    color:#666;
+    color:#6b7280;
     margin-top:30px;
 }
 
@@ -163,7 +164,7 @@ button:hover{
 
 .update-time{
     margin-top:10px;
-    color:#666;
+    color:#6b7280;
     font-size:13px;
 }
 
@@ -196,6 +197,13 @@ button:hover{
 
 <script>
 
+window.onerror = function(msg){
+
+    console.error(msg);
+    alert("오류 발생 : " + msg);
+
+};
+
 const FIXED_LAT = 37.4738;
 const FIXED_LON = 126.6215;
 
@@ -203,6 +211,13 @@ const START_DATE = "2026-05-08";
 
 const SPREADSHEET_ID =
 "1nEYNEW9g9omiNviB8yW4Vjd3TecZlSUBIvmMA9DvIfw";
+
+const SHEET_GID = {
+
+    "1연구실":"0",
+    "2연구실":"2012426230"
+
+};
 
 const labs = [
 
@@ -221,11 +236,6 @@ const labs = [
 ];
 
 let weatherRows = [];
-
-
-// ========================================
-// 시작
-// ========================================
 
 init();
 
@@ -253,12 +263,12 @@ async function init(){
 
             }catch(error){
 
-                console.error(
-                    `${lab.id} 시트 로딩 실패`,
-                    error
-                );
+                console.error(error);
 
-                renderErrorLab(lab);
+                renderErrorLab(
+                    lab,
+                    error.message
+                );
 
             }
 
@@ -269,25 +279,16 @@ async function init(){
         console.error(error);
 
         document.getElementById("app").innerHTML =
-            `
-            <div class="error-box">
+        `
+        <div class="error-box">
 
-                데이터 로딩 실패
-                <br><br>
+            전체 데이터 로딩 실패
+            <br><br>
 
-                확인 필요 사항:
-                <br>
+            ${error.message}
 
-                1. Google Sheets 공개 여부
-                <br>
-
-                2. 시트 탭명 일치 여부
-                <br>
-
-                3. 인터넷 연결 상태
-
-            </div>
-            `;
+        </div>
+        `;
 
     }
 
@@ -320,7 +321,9 @@ async function fetchWeather(){
 
     if(!response.ok){
 
-        throw new Error("기상정보 조회 실패");
+        throw new Error(
+            "기상정보 조회 실패"
+        );
 
     }
 
@@ -338,18 +341,40 @@ async function fetchWeather(){
 
 async function loadGoogleSheet(sheetName){
 
+    const gid =
+        SHEET_GID[sheetName];
+
+    if(!gid){
+
+        throw new Error(
+            `${sheetName} gid 설정 없음`
+        );
+
+    }
+
     const url =
-`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${gid}`;
 
     const response = await fetch(url);
 
     if(!response.ok){
 
-        throw new Error("Google Sheets 조회 실패");
+        throw new Error(
+            `${sheetName} CSV 조회 실패`
+        );
 
     }
 
-    const text = await response.text();
+    const text =
+        await response.text();
+
+    if(!text){
+
+        throw new Error(
+            `${sheetName} 데이터 없음`
+        );
+
+    }
 
     return parseCSV(text);
 
@@ -419,7 +444,8 @@ function makeDailyAverage(hourly){
 
     hourly.time.forEach((time, idx)=>{
 
-        const date = time.slice(0,10);
+        const date =
+            time.slice(0,10);
 
         if(!daily[date]){
 
@@ -486,19 +512,13 @@ function renderLab(lab, rows){
         const date =
             (r["날짜"] || "").trim();
 
-        const currentHum =
-            Number(r["현재습도"]);
-
-        const targetHum =
-            Number(r["목표습도"]);
-
         map[date] = {
 
             currentHum:
-                currentHum,
+                Number(r["현재습도"]),
 
             targetHum:
-                targetHum
+                Number(r["목표습도"])
 
         };
 
@@ -540,10 +560,14 @@ function renderLab(lab, rows){
         if(hasData){
 
             effect =
-                Math.round((row.avgHum-currentHum)*10)/10;
+                Math.round(
+                    (row.avgHum-currentHum)*10
+                )/10;
 
             over =
-                Math.round((currentHum-targetHum)*10)/10;
+                Math.round(
+                    (currentHum-targetHum)*10
+                )/10;
 
             totalEffect += effect;
             totalOutdoor += row.avgHum;
@@ -571,9 +595,18 @@ function renderLab(lab, rows){
 
             }
 
-            weeklyData[weekKey].outdoor.push(row.avgHum);
-            weeklyData[weekKey].indoor.push(currentHum);
-            weeklyData[weekKey].effect.push(effect);
+            weeklyData[weekKey].outdoor.push(
+                row.avgHum
+            );
+
+            weeklyData[weekKey].indoor.push(
+                currentHum
+            );
+
+            weeklyData[weekKey].effect.push(
+                effect
+            );
+
             weeklyData[weekKey].total++;
 
             if(currentHum <= targetHum){
@@ -642,27 +675,20 @@ function renderLab(lab, rows){
         const data =
             weeklyData[week];
 
-        const outdoorAvg =
-            avg(data.outdoor);
-
-        const indoorAvg =
-            avg(data.indoor);
-
-        const effectAvg =
-            avg(data.effect);
-
-        const successAvg =
-            Math.round(
-                (data.success / data.total) * 1000
-            ) / 10;
-
         weeklyHTML += `
             <tr>
                 <td>${week}</td>
-                <td>${outdoorAvg}%</td>
-                <td>${indoorAvg}%</td>
-                <td>${effectAvg}%p</td>
-                <td>${successAvg}%</td>
+                <td>${avg(data.outdoor)}%</td>
+                <td>${avg(data.indoor)}%</td>
+                <td>${avg(data.effect)}%p</td>
+                <td>
+                    ${
+                        Math.round(
+                            (data.success/data.total)
+                            *1000
+                        )/10
+                    }%
+                </td>
             </tr>
         `;
 
@@ -670,7 +696,7 @@ function renderLab(lab, rows){
 
 
 // ========================================
-// 화면 출력
+// 출력
 // ========================================
 
     app.innerHTML += `
@@ -694,44 +720,56 @@ function renderLab(lab, rows){
                 <br><br>
 
                 <b>Google Sheets 자동 연동 완료</b>
-                <br>
-
-                최신 데이터 자동 반영
 
             </div>
 
             <div class="summary-grid">
 
                 <div class="summary-item">
-                    <div class="summary-title">기록 일수</div>
+                    <div class="summary-title">
+                        기록 일수
+                    </div>
+
                     <div class="summary-value">
                         ${effectCount}일
                     </div>
                 </div>
 
                 <div class="summary-item">
-                    <div class="summary-title">평균 외기 습도</div>
+                    <div class="summary-title">
+                        평균 외기 습도
+                    </div>
+
                     <div class="summary-value">
                         ${avgOutdoor}%
                     </div>
                 </div>
 
                 <div class="summary-item">
-                    <div class="summary-title">평균 실내 습도</div>
+                    <div class="summary-title">
+                        평균 실내 습도
+                    </div>
+
                     <div class="summary-value">
                         ${avgIndoor}%
                     </div>
                 </div>
 
                 <div class="summary-item">
-                    <div class="summary-title">평균 제습 효과</div>
+                    <div class="summary-title">
+                        평균 제습 효과
+                    </div>
+
                     <div class="summary-value">
                         ${avgEffect}%p
                     </div>
                 </div>
 
                 <div class="summary-item">
-                    <div class="summary-title">목표 달성률</div>
+                    <div class="summary-title">
+                        목표 달성률
+                    </div>
+
                     <div class="summary-value">
                         ${successRate}%
                     </div>
@@ -751,7 +789,6 @@ function renderLab(lab, rows){
                     <table>
 
                         <thead>
-
                             <tr>
                                 <th>주차</th>
                                 <th>평균 외기습도</th>
@@ -759,7 +796,6 @@ function renderLab(lab, rows){
                                 <th>평균 제습효과</th>
                                 <th>목표 달성률</th>
                             </tr>
-
                         </thead>
 
                         <tbody>
@@ -821,10 +857,10 @@ function renderLab(lab, rows){
 
 
 // ========================================
-// 에러 렌더
+// 에러 출력
 // ========================================
 
-function renderErrorLab(lab){
+function renderErrorLab(lab, msg){
 
     const app =
         document.getElementById("app");
@@ -843,19 +879,13 @@ function renderErrorLab(lab){
 
             <div class="error-box">
 
-                Google Sheets 데이터 조회 실패
+                데이터 로딩 실패
                 <br><br>
 
-                확인 필요 사항:
+                오류 내용:
                 <br>
 
-                - 시트 탭명 일치 여부
-                <br>
-
-                - 시트 공개 여부
-                <br>
-
-                - 인터넷 연결 상태
+                ${msg}
 
             </div>
 
