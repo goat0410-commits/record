@@ -26,7 +26,18 @@ h1{
 
 .main-desc{
     color:#4b5563;
+    margin-bottom:20px;
+    line-height:1.8;
+}
+
+.info-box{
+    background:#f9fafb;
+    border:1px solid #d1d5db;
+    border-radius:12px;
+    padding:15px;
     margin-bottom:30px;
+    line-height:1.8;
+    color:#374151;
 }
 
 .lab-section{
@@ -58,31 +69,6 @@ h1{
     line-height:1.7;
 }
 
-.summary-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-    gap:15px;
-    margin-bottom:25px;
-}
-
-.summary-item{
-    background:#f9fafb;
-    border-radius:12px;
-    padding:15px;
-    border:1px solid #d1d5db;
-}
-
-.summary-title{
-    font-size:13px;
-    color:#6b7280;
-    margin-bottom:8px;
-}
-
-.summary-value{
-    font-size:26px;
-    font-weight:bold;
-}
-
 .analysis-box{
     margin-top:30px;
 }
@@ -100,7 +86,7 @@ h1{
 
 table{
     width:100%;
-    min-width:1200px;
+    min-width:1900px;
     border-collapse:collapse;
     background:#ffffff;
 }
@@ -138,16 +124,6 @@ th{
     line-height:1.8;
 }
 
-.loading{
-    font-size:18px;
-    color:#6b7280;
-    margin-top:30px;
-}
-
-.refresh-box{
-    margin-bottom:20px;
-}
-
 button{
     padding:10px 16px;
     border:none;
@@ -179,33 +155,58 @@ button:hover{
 인천광역시 중구 북성동1가 기준 기상정보 및 연구실 제습 성능 분석
 </div>
 
-<div class="refresh-box">
+<div class="info-box">
 
-    <button onclick="location.reload()">
-        데이터 새로고침
-    </button>
+<b>습도 측정 기준</b>
+<br><br>
 
-    <div class="update-time" id="updateTime"></div>
+- 오전 측정 기준 시간 : 오전 08:00
+<br>
+
+- 오후 측정 기준 시간 : 오후 02:00
+<br><br>
+
+※ Google Sheets 입력 시 오전/오후 기준으로 각각 현재습도 및 목표습도를 입력합니다.
+<br>
+
+※ 기상정보는 Open-Meteo Weather API 기준 자동 연동됩니다.
+<br>
+
+※ 데이터 관리 시작일 : 2026-05-15
+
+<br><br>
+
+<b>Google Sheets 입력 양식</b>
+
+<br><br>
+
+날짜 | 오전현재습도 | 오전목표습도 | 오후현재습도 | 오후목표습도 | 비고
 
 </div>
 
+<button onclick="location.reload()">
+데이터 새로고침
+</button>
+
+<div class="update-time" id="updateTime"></div>
+
+<br><br>
+
 <div id="app">
 
-    <div class="loading">
-        데이터 불러오는 중...
-    </div>
+    데이터 불러오는 중...
 
 </div>
 
 <script>
 
-const START_DATE = "2026-05-08";
-
-const WEATHER_API =
-"https://api.open-meteo.com/v1/forecast";
+const START_DATE = "2026-05-15";
 
 const LAT = 37.4738;
 const LON = 126.6215;
+
+const WEATHER_API =
+"https://api.open-meteo.com/v1/forecast";
 
 const SPREADSHEET_ID =
 "1nEYNEW9g9omiNviB8yW4Vjd3TecZlSUBIvmMA9DvIfw";
@@ -213,7 +214,8 @@ const SPREADSHEET_ID =
 const SHEET_GID = {
 
     "1연구실":"0",
-    "2연구실":"781103558"
+
+    "2연구실":"여기에_실제_gid_입력"
 
 };
 
@@ -248,34 +250,23 @@ window.onload = () => {
 
 async function init(){
 
+    document.getElementById("updateTime")
+    .innerText =
+        "마지막 업데이트 : " +
+        new Date().toLocaleString("ko-KR");
+
     try{
-
-        document.getElementById("updateTime")
-        .innerText =
-            "마지막 업데이트 : " +
-            new Date().toLocaleString("ko-KR");
-
-        document.getElementById("app").innerHTML = "";
 
         await loadWeatherData();
 
+        document.getElementById("app").innerHTML = "";
+
         for(const lab of labs){
 
-            try{
+            const rows =
+                await loadGoogleSheet(lab.id);
 
-                const rows =
-                    await loadGoogleSheet(lab.id);
-
-                renderLab(lab, rows);
-
-            }catch(error){
-
-                renderErrorLab(
-                    lab,
-                    error.message
-                );
-
-            }
+            renderLab(lab, rows);
 
         }
 
@@ -285,7 +276,7 @@ async function init(){
         `
         <div class="error-box">
 
-            전체 데이터 로딩 실패
+            데이터 로딩 실패
             <br><br>
 
             ${error.message}
@@ -299,7 +290,7 @@ async function init(){
 
 
 // ========================================
-// 기상 API 조회
+// 기상 API
 // ========================================
 
 async function loadWeatherData(){
@@ -326,7 +317,7 @@ async function loadWeatherData(){
     if(!response.ok){
 
         throw new Error(
-            "기상 API 조회 실패"
+            "기상정보 조회 실패"
         );
 
     }
@@ -337,7 +328,7 @@ async function loadWeatherData(){
     if(!data.daily){
 
         throw new Error(
-            "기상 데이터 없음"
+            "기상정보 데이터 없음"
         );
 
     }
@@ -348,7 +339,10 @@ async function loadWeatherData(){
             return {
 
                 date:date,
-                month:Number(date.slice(5,7)),
+
+                month:
+                    Number(date.slice(5,7)),
+
                 avgTemp:
                     data.daily.temperature_2m_mean[idx],
 
@@ -433,36 +427,7 @@ function parseCSV(text){
 
 
 // ========================================
-// 평균 계산
-// ========================================
-
-function avg(arr){
-
-    if(!arr.length) return "-";
-
-    return Math.round(
-        (arr.reduce((a,b)=>a+b,0)/arr.length)*10
-    )/10;
-
-}
-
-
-// ========================================
-// 주차 계산
-// ========================================
-
-function getWeekNumber(dateString){
-
-    const day =
-        Number(dateString.split("-")[2]);
-
-    return Math.ceil(day / 7);
-
-}
-
-
-// ========================================
-// 연구실 렌더
+// 연구실 출력
 // ========================================
 
 function renderLab(lab, rows){
@@ -479,190 +444,143 @@ function renderLab(lab, rows){
 
         map[date] = {
 
-            currentHum:
-                Number(r["현재습도"]),
+            amCurrent:
+                Number(r["오전현재습도"]),
 
-            targetHum:
-                Number(r["목표습도"])
+            amTarget:
+                Number(r["오전목표습도"]),
+
+            pmCurrent:
+                Number(r["오후현재습도"]),
+
+            pmTarget:
+                Number(r["오후목표습도"]),
+
+            memo:
+                r["비고"] || ""
 
         };
 
     });
 
-    let totalEffect = 0;
-    let totalOutdoor = 0;
-    let totalIndoor = 0;
-
-    let effectCount = 0;
-    let success = 0;
-
-    let dailyHTML = "";
-
-    let weeklyData = {};
+    let html = "";
 
     weatherRows.forEach(row=>{
 
         const manual =
             map[row.date] || {};
 
-        const currentHum =
-            manual.currentHum;
+        const amExists =
+            manual.amCurrent &&
+            manual.amTarget;
 
-        const targetHum =
-            manual.targetHum;
+        const pmExists =
+            manual.pmCurrent &&
+            manual.pmTarget;
 
-        const hasData =
-            !isNaN(currentHum) &&
-            !isNaN(targetHum) &&
-            currentHum !== 0 &&
-            targetHum !== 0;
+        const amResult =
+            amExists
+            ? (
+                manual.amCurrent <= manual.amTarget
+                ? "목표 달성"
+                : "목표 미달"
+            )
+            : "미확인";
 
-        let effect = "";
-        let over = "";
-        let result = "미확인";
-        let cls = "none";
+        const pmResult =
+            pmExists
+            ? (
+                manual.pmCurrent <= manual.pmTarget
+                ? "목표 달성"
+                : "목표 미달"
+            )
+            : "미확인";
 
-        if(hasData){
-
-            effect =
-                Math.round(
-                    (row.avgHum-currentHum)*10
-                )/10;
-
-            over =
-                Math.round(
-                    (currentHum-targetHum)*10
-                )/10;
-
-            totalEffect += effect;
-            totalOutdoor += row.avgHum;
-            totalIndoor += currentHum;
-
-            effectCount++;
-
-            const week =
-                getWeekNumber(row.date);
-
-            const weekKey =
-                `${row.month}월 ${week}주차`;
-
-            if(!weeklyData[weekKey]){
-
-                weeklyData[weekKey] = {
-
-                    outdoor:[],
-                    indoor:[],
-                    effect:[],
-                    success:0,
-                    total:0
-
-                };
-
-            }
-
-            weeklyData[weekKey].outdoor.push(
-                row.avgHum
+        const amClass =
+            !amExists
+            ? "none"
+            : (
+                manual.amCurrent <= manual.amTarget
+                ? "good"
+                : "bad"
             );
 
-            weeklyData[weekKey].indoor.push(
-                currentHum
+        const pmClass =
+            !pmExists
+            ? "none"
+            : (
+                manual.pmCurrent <= manual.pmTarget
+                ? "good"
+                : "bad"
             );
 
-            weeklyData[weekKey].effect.push(
-                effect
-            );
+        html += `
 
-            weeklyData[weekKey].total++;
-
-            if(currentHum <= targetHum){
-
-                result = "목표 달성";
-                cls = "good";
-
-                success++;
-
-                weeklyData[weekKey].success++;
-
-            }else{
-
-                result = "목표 미달";
-                cls = "bad";
-
-            }
-
-        }
-
-        dailyHTML += `
-            <tr class="${cls}">
-                <td>${row.date}</td>
-                <td>${row.month}월</td>
-                <td>${row.avgTemp ?? ""}</td>
-                <td>${row.avgHum ?? ""}</td>
-                <td>${hasData ? currentHum : ""}</td>
-                <td>${hasData ? targetHum : ""}</td>
-                <td>${hasData ? over : ""}</td>
-                <td>${hasData ? effect : ""}</td>
-                <td>${result}</td>
-            </tr>
-        `;
-
-    });
-
-    const avgOutdoor =
-        effectCount
-        ? Math.round((totalOutdoor/effectCount)*10)/10
-        : "-";
-
-    const avgIndoor =
-        effectCount
-        ? Math.round((totalIndoor/effectCount)*10)/10
-        : "-";
-
-    const avgEffect =
-        effectCount
-        ? Math.round((totalEffect/effectCount)*10)/10
-        : "-";
-
-    const successRate =
-        effectCount
-        ? Math.round((success/effectCount)*1000)/10
-        : "-";
-
-
-// ========================================
-// 주차별 평균
-// ========================================
-
-    let weeklyHTML = "";
-
-    Object.keys(weeklyData).forEach(week=>{
-
-        const data =
-            weeklyData[week];
-
-        weeklyHTML += `
             <tr>
-                <td>${week}</td>
-                <td>${avg(data.outdoor)}%</td>
-                <td>${avg(data.indoor)}%</td>
-                <td>${avg(data.effect)}%p</td>
-                <td>
-                    ${
-                        Math.round(
-                            (data.success/data.total)
-                            *1000
-                        )/10
-                    }%
+
+                <td>${row.date}</td>
+
+                <td>${row.month}월</td>
+
+                <td>${row.avgTemp ?? ""}</td>
+
+                <td>${row.avgHum ?? ""}</td>
+
+
+                <td class="${amClass}">
+                    ${amExists ? manual.amCurrent : ""}
                 </td>
+
+                <td class="${amClass}">
+                    ${amExists ? manual.amTarget : ""}
+                </td>
+
+                <td class="${amClass}">
+                    ${
+                        amExists
+                        ? Math.round(
+                            (row.avgHum-manual.amCurrent)*10
+                        )/10
+                        : ""
+                    }
+                </td>
+
+                <td class="${amClass}">
+                    ${amResult}
+                </td>
+
+
+                <td class="${pmClass}">
+                    ${pmExists ? manual.pmCurrent : ""}
+                </td>
+
+                <td class="${pmClass}">
+                    ${pmExists ? manual.pmTarget : ""}
+                </td>
+
+                <td class="${pmClass}">
+                    ${
+                        pmExists
+                        ? Math.round(
+                            (row.avgHum-manual.pmCurrent)*10
+                        )/10
+                        : ""
+                    }
+                </td>
+
+                <td class="${pmClass}">
+                    ${pmResult}
+                </td>
+
+                <td>
+                    ${manual.memo || ""}
+                </td>
+
             </tr>
+
         `;
 
     });
-
-
-// ========================================
-// 출력
-// ========================================
 
     app.innerHTML += `
 
@@ -684,100 +602,12 @@ function renderLab(lab, rows){
                 인천광역시 중구 북성동1가
                 <br><br>
 
-                <b>기상정보 API 자동 연동</b>
+                <b>기상정보 자동 연동</b>
                 <br>
 
                 Open-Meteo Weather API 기반
 
             </div>
-
-            <div class="summary-grid">
-
-                <div class="summary-item">
-                    <div class="summary-title">
-                        기록 일수
-                    </div>
-
-                    <div class="summary-value">
-                        ${effectCount}일
-                    </div>
-                </div>
-
-                <div class="summary-item">
-                    <div class="summary-title">
-                        평균 외기 습도
-                    </div>
-
-                    <div class="summary-value">
-                        ${avgOutdoor}%
-                    </div>
-                </div>
-
-                <div class="summary-item">
-                    <div class="summary-title">
-                        평균 실내 습도
-                    </div>
-
-                    <div class="summary-value">
-                        ${avgIndoor}%
-                    </div>
-                </div>
-
-                <div class="summary-item">
-                    <div class="summary-title">
-                        평균 제습 효과
-                    </div>
-
-                    <div class="summary-value">
-                        ${avgEffect}%p
-                    </div>
-                </div>
-
-                <div class="summary-item">
-                    <div class="summary-title">
-                        목표 달성률
-                    </div>
-
-                    <div class="summary-value">
-                        ${successRate}%
-                    </div>
-                </div>
-
-            </div>
-
-
-            <div class="analysis-box">
-
-                <div class="analysis-title">
-                    주차별 평균 분석
-                </div>
-
-                <div class="table-wrap">
-
-                    <table>
-
-                        <thead>
-                            <tr>
-                                <th>주차</th>
-                                <th>평균 외기습도</th>
-                                <th>평균 실내습도</th>
-                                <th>평균 제습효과</th>
-                                <th>목표 달성률</th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-
-                            ${weeklyHTML}
-
-                        </tbody>
-
-                    </table>
-
-                </div>
-
-            </div>
-
 
             <div class="analysis-box">
 
@@ -792,68 +622,84 @@ function renderLab(lab, rows){
                         <thead>
 
                             <tr>
-                                <th>날짜</th>
-                                <th>월</th>
-                                <th>외기 평균기온</th>
-                                <th>외기 평균습도</th>
-                                <th>현재습도</th>
-                                <th>목표습도</th>
-                                <th>목표 초과</th>
-                                <th>제습 효과</th>
-                                <th>판정</th>
+
+                                <th rowspan="2">
+                                    날짜
+                                </th>
+
+                                <th rowspan="2">
+                                    월
+                                </th>
+
+                                <th rowspan="2">
+                                    외기 평균기온
+                                </th>
+
+                                <th rowspan="2">
+                                    외기 평균습도
+                                </th>
+
+                                <th colspan="4">
+                                    오전 08:00 기준
+                                </th>
+
+                                <th colspan="4">
+                                    오후 02:00 기준
+                                </th>
+
+                                <th rowspan="2">
+                                    비고
+                                </th>
+
+                            </tr>
+
+                            <tr>
+
+                                <th>
+                                    현재습도
+                                </th>
+
+                                <th>
+                                    목표습도
+                                </th>
+
+                                <th>
+                                    제습효과
+                                </th>
+
+                                <th>
+                                    판정
+                                </th>
+
+                                <th>
+                                    현재습도
+                                </th>
+
+                                <th>
+                                    목표습도
+                                </th>
+
+                                <th>
+                                    제습효과
+                                </th>
+
+                                <th>
+                                    판정
+                                </th>
+
                             </tr>
 
                         </thead>
 
                         <tbody>
 
-                            ${dailyHTML}
+                            ${html}
 
                         </tbody>
 
                     </table>
 
                 </div>
-
-            </div>
-
-        </div>
-
-    `;
-
-}
-
-
-// ========================================
-// 에러 출력
-// ========================================
-
-function renderErrorLab(lab, msg){
-
-    const app =
-        document.getElementById("app");
-
-    app.innerHTML += `
-
-        <div class="lab-section">
-
-            <div class="lab-title">
-                ${lab.title}
-            </div>
-
-            <div class="lab-subtitle">
-                ${lab.subtitle}
-            </div>
-
-            <div class="error-box">
-
-                데이터 로딩 실패
-                <br><br>
-
-                오류 내용:
-                <br>
-
-                ${msg}
 
             </div>
 
