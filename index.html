@@ -1,3 +1,17 @@
+<!-- ========================================= -->
+<!-- Google Sheets 입력 양식 -->
+<!-- ========================================= -->
+
+<!--
+
+날짜 | 오전현재습도 | 오전목표습도 | 오후현재습도 | 오후목표습도 | 비고
+
+예시)
+
+2026-05-15 | 36 | 50 | 41 | 50 | 정상 운영
+
+-->
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -51,7 +65,6 @@ h1{
 .lab-title{
     font-size:30px;
     font-weight:bold;
-    color:#111827;
 }
 
 .lab-subtitle{
@@ -86,7 +99,7 @@ h1{
 
 table{
     width:100%;
-    min-width:1900px;
+    min-width:2400px;
     border-collapse:collapse;
     background:#ffffff;
 }
@@ -100,7 +113,6 @@ th, td{
 
 th{
     background:#e5e7eb;
-    color:#111827;
 }
 
 .good{
@@ -166,10 +178,10 @@ button:hover{
 - 오후 측정 기준 시간 : 오후 02:00
 <br><br>
 
-※ Google Sheets 입력 시 오전/오후 기준으로 각각 현재습도 및 목표습도를 입력합니다.
+※ 기상정보도 동일하게 오전 08:00 / 오후 02:00 기준으로 자동 조회됩니다.
 <br>
 
-※ 기상정보는 Open-Meteo Weather API 기준 자동 연동됩니다.
+※ Open-Meteo Weather API 자동 연동
 <br>
 
 ※ 데이터 관리 시작일 : 2026-05-15
@@ -193,9 +205,7 @@ button:hover{
 <br><br>
 
 <div id="app">
-
-    데이터 불러오는 중...
-
+데이터 불러오는 중...
 </div>
 
 <script>
@@ -204,9 +214,6 @@ const START_DATE = "2026-05-15";
 
 const LAT = 37.4738;
 const LON = 126.6215;
-
-const WEATHER_API =
-"https://api.open-meteo.com/v1/forecast";
 
 const SPREADSHEET_ID =
 "1nEYNEW9g9omiNviB8yW4Vjd3TecZlSUBIvmMA9DvIfw";
@@ -290,7 +297,7 @@ async function init(){
 
 
 // ========================================
-// 기상 API
+// 기상 API 조회
 // ========================================
 
 async function loadWeatherData(){
@@ -303,13 +310,13 @@ async function loadWeatherData(){
         String(today.getDate()).padStart(2,'0');
 
     const url =
-        `${WEATHER_API}` +
+        `https://archive-api.open-meteo.com/v1/archive` +
         `?latitude=${LAT}` +
         `&longitude=${LON}` +
-        `&daily=temperature_2m_mean,relative_humidity_2m_mean` +
-        `&timezone=Asia%2FSeoul` +
         `&start_date=${START_DATE}` +
-        `&end_date=${endDate}`;
+        `&end_date=${endDate}` +
+        `&hourly=temperature_2m,relative_humidity_2m` +
+        `&timezone=Asia%2FSeoul`;
 
     const response =
         await fetch(url);
@@ -325,16 +332,48 @@ async function loadWeatherData(){
     const data =
         await response.json();
 
-    if(!data.daily){
+    const dailyMap = {};
 
-        throw new Error(
-            "기상정보 데이터 없음"
-        );
+    data.hourly.time.forEach((time, idx)=>{
 
-    }
+        const date =
+            time.slice(0,10);
+
+        const hour =
+            time.slice(11,13);
+
+        if(!dailyMap[date]){
+
+            dailyMap[date] = {};
+
+        }
+
+        // 오전 08시 기준
+        if(hour === "08"){
+
+            dailyMap[date].amTemp =
+                data.hourly.temperature_2m[idx];
+
+            dailyMap[date].amHum =
+                data.hourly.relative_humidity_2m[idx];
+
+        }
+
+        // 오후 14시 기준
+        if(hour === "14"){
+
+            dailyMap[date].pmTemp =
+                data.hourly.temperature_2m[idx];
+
+            dailyMap[date].pmHum =
+                data.hourly.relative_humidity_2m[idx];
+
+        }
+
+    });
 
     weatherRows =
-        data.daily.time.map((date, idx)=>{
+        Object.keys(dailyMap).map(date=>{
 
             return {
 
@@ -343,11 +382,17 @@ async function loadWeatherData(){
                 month:
                     Number(date.slice(5,7)),
 
-                avgTemp:
-                    data.daily.temperature_2m_mean[idx],
+                amTemp:
+                    dailyMap[date].amTemp,
 
-                avgHum:
-                    data.daily.relative_humidity_2m_mean[idx]
+                amHum:
+                    dailyMap[date].amHum,
+
+                pmTemp:
+                    dailyMap[date].pmTemp,
+
+                pmHum:
+                    dailyMap[date].pmHum
 
             };
 
@@ -522,10 +567,19 @@ function renderLab(lab, rows){
 
                 <td>${row.month}월</td>
 
-                <td>${row.avgTemp ?? ""}</td>
 
-                <td>${row.avgHum ?? ""}</td>
+                <!-- 오전 기상정보 -->
 
+                <td>
+                    ${row.amTemp ?? ""}
+                </td>
+
+                <td>
+                    ${row.amHum ?? ""}
+                </td>
+
+
+                <!-- 오전 연구실 -->
 
                 <td class="${amClass}">
                     ${amExists ? manual.amCurrent : ""}
@@ -539,7 +593,7 @@ function renderLab(lab, rows){
                     ${
                         amExists
                         ? Math.round(
-                            (row.avgHum-manual.amCurrent)*10
+                            (row.amHum-manual.amCurrent)*10
                         )/10
                         : ""
                     }
@@ -549,6 +603,19 @@ function renderLab(lab, rows){
                     ${amResult}
                 </td>
 
+
+                <!-- 오후 기상정보 -->
+
+                <td>
+                    ${row.pmTemp ?? ""}
+                </td>
+
+                <td>
+                    ${row.pmHum ?? ""}
+                </td>
+
+
+                <!-- 오후 연구실 -->
 
                 <td class="${pmClass}">
                     ${pmExists ? manual.pmCurrent : ""}
@@ -562,7 +629,7 @@ function renderLab(lab, rows){
                     ${
                         pmExists
                         ? Math.round(
-                            (row.avgHum-manual.pmCurrent)*10
+                            (row.pmHum-manual.pmCurrent)*10
                         )/10
                         : ""
                     }
@@ -605,7 +672,7 @@ function renderLab(lab, rows){
                 <b>기상정보 자동 연동</b>
                 <br>
 
-                Open-Meteo Weather API 기반
+                오전 08:00 / 오후 02:00 기준 자동 조회
 
             </div>
 
@@ -631,19 +698,11 @@ function renderLab(lab, rows){
                                     월
                                 </th>
 
-                                <th rowspan="2">
-                                    외기 평균기온
-                                </th>
-
-                                <th rowspan="2">
-                                    외기 평균습도
-                                </th>
-
-                                <th colspan="4">
+                                <th colspan="6">
                                     오전 08:00 기준
                                 </th>
 
-                                <th colspan="4">
+                                <th colspan="6">
                                     오후 02:00 기준
                                 </th>
 
@@ -654,6 +713,14 @@ function renderLab(lab, rows){
                             </tr>
 
                             <tr>
+
+                                <th>
+                                    외기온도
+                                </th>
+
+                                <th>
+                                    외기습도
+                                </th>
 
                                 <th>
                                     현재습도
@@ -669,6 +736,14 @@ function renderLab(lab, rows){
 
                                 <th>
                                     판정
+                                </th>
+
+                                <th>
+                                    외기온도
+                                </th>
+
+                                <th>
+                                    외기습도
                                 </th>
 
                                 <th>
