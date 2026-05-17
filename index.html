@@ -6,6 +6,8 @@
 
 <title>연구실 제습 성능 관리 시스템</title>
 
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
 <style>
 
 *{
@@ -128,6 +130,7 @@ button{
     color:white;
     cursor:pointer;
     font-size:14px;
+    margin-right:10px;
 }
 
 button:hover{
@@ -138,6 +141,31 @@ button:hover{
     margin-top:10px;
     color:#6b7280;
     font-size:13px;
+}
+
+.summary-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:15px;
+    margin-top:20px;
+}
+
+.summary-item{
+    background:#f9fafb;
+    border:1px solid #d1d5db;
+    border-radius:12px;
+    padding:15px;
+}
+
+.summary-title{
+    font-size:13px;
+    color:#6b7280;
+    margin-bottom:8px;
+}
+
+.summary-value{
+    font-size:24px;
+    font-weight:bold;
 }
 
 </style>
@@ -153,26 +181,30 @@ button:hover{
 
 <div class="info-box">
 
-<b>습도 측정 기준</b>
+<b>측정 기준</b>
 
 <br><br>
 
-- 오전 측정 기준 시간 : 오전 08:00
+- 오전 기준 : 오전 08:00
 <br>
 
-- 오후 측정 기준 시간 : 오후 02:00
+- 오후 기준 : 오후 02:00
 
 <br><br>
 
-※ 외기온도 및 외기습도는 직접 입력 방식
-<br>
 
 ※ 데이터 관리 시작일 : 2026-05-08
+<br>
+
 
 </div>
 
 <button onclick="location.reload()">
 데이터 새로고침
+</button>
+
+<button onclick="downloadExcel()">
+엑셀 다운로드
 </button>
 
 <div class="update-time" id="updateTime"></div>
@@ -331,6 +363,46 @@ function parseCSV(text){
 
 
 // ========================================
+// 주차 계산
+// ========================================
+
+function getWeek(dateStr){
+
+    const date =
+        new Date(dateStr);
+
+    const first =
+        new Date(date.getFullYear(),0,1);
+
+    const days =
+        Math.floor(
+            (date-first)/(24*60*60*1000)
+        );
+
+    return Math.ceil((days+1)/7);
+
+}
+
+
+// ========================================
+// 평균 계산
+// ========================================
+
+function avg(arr){
+
+    if(arr.length === 0) return "-";
+
+    return Math.round(
+        (
+            arr.reduce((a,b)=>a+b,0)
+            / arr.length
+        ) * 10
+    ) / 10;
+
+}
+
+
+// ========================================
 // 연구실 출력
 // ========================================
 
@@ -341,7 +413,25 @@ function renderLab(lab, rows){
 
     let html = "";
 
+    const today =
+        new Date();
+
+    const todayStr =
+        today.toISOString().split("T")[0];
+
+    let weeklyMap = {};
+
     rows.forEach(r=>{
+
+        const date =
+            (r["날짜"] || "").trim();
+
+        // 오늘 이후 날짜 숨김
+        if(date > todayStr){
+
+            return;
+
+        }
 
         const amCurrent =
             Number(r["오전현재습도"]);
@@ -355,11 +445,31 @@ function renderLab(lab, rows){
         const pmTarget =
             Number(r["오후목표습도"]);
 
+        const amOutside =
+            Number(r["오전외기습도"]);
+
+        const pmOutside =
+            Number(r["오후외기습도"]);
+
         const amExists =
             amCurrent && amTarget;
 
         const pmExists =
             pmCurrent && pmTarget;
+
+        const amEffect =
+            amExists
+            ? Math.round(
+                (amOutside-amCurrent)*10
+              ) / 10
+            : "";
+
+        const pmEffect =
+            pmExists
+            ? Math.round(
+                (pmOutside-pmCurrent)*10
+              ) / 10
+            : "";
 
         const amResult =
             !amExists
@@ -397,11 +507,57 @@ function renderLab(lab, rows){
                 : "bad"
             );
 
+        // 주차별 평균 계산
+
+        const week =
+            getWeek(date);
+
+        if(!weeklyMap[week]){
+
+            weeklyMap[week] = {
+
+                amOutside:[],
+                pmOutside:[],
+                amInside:[],
+                pmInside:[],
+                amEffect:[],
+                pmEffect:[]
+
+            };
+
+        }
+
+        if(amExists){
+
+            weeklyMap[week]
+            .amOutside.push(amOutside);
+
+            weeklyMap[week]
+            .amInside.push(amCurrent);
+
+            weeklyMap[week]
+            .amEffect.push(amEffect);
+
+        }
+
+        if(pmExists){
+
+            weeklyMap[week]
+            .pmOutside.push(pmOutside);
+
+            weeklyMap[week]
+            .pmInside.push(pmCurrent);
+
+            weeklyMap[week]
+            .pmEffect.push(pmEffect);
+
+        }
+
         html += `
 
             <tr>
 
-                <td>${r["날짜"]}</td>
+                <td>${date}</td>
 
                 <!-- 오전 -->
 
@@ -418,16 +574,7 @@ function renderLab(lab, rows){
                 </td>
 
                 <td class="${amClass}">
-                    ${
-                        amExists
-                        ? Math.round(
-                            (
-                                Number(r["오전외기습도"])
-                                - amCurrent
-                            ) * 10
-                        ) / 10
-                        : ""
-                    }
+                    ${amEffect}
                 </td>
 
                 <td class="${amClass}">
@@ -450,16 +597,7 @@ function renderLab(lab, rows){
                 </td>
 
                 <td class="${pmClass}">
-                    ${
-                        pmExists
-                        ? Math.round(
-                            (
-                                Number(r["오후외기습도"])
-                                - pmCurrent
-                            ) * 10
-                        ) / 10
-                        : ""
-                    }
+                    ${pmEffect}
                 </td>
 
                 <td class="${pmClass}">
@@ -475,6 +613,47 @@ function renderLab(lab, rows){
         `;
 
     });
+
+
+// ========================================
+// 주차별 평균 HTML
+// ========================================
+
+    let weeklyHtml = "";
+
+    Object.keys(weeklyMap).forEach(week=>{
+
+        const w =
+            weeklyMap[week];
+
+        weeklyHtml += `
+
+            <tr>
+
+                <td>${week}주차</td>
+
+                <td>${avg(w.amOutside)}%</td>
+
+                <td>${avg(w.amInside)}%</td>
+
+                <td>${avg(w.amEffect)}%p</td>
+
+                <td>${avg(w.pmOutside)}%</td>
+
+                <td>${avg(w.pmInside)}%</td>
+
+                <td>${avg(w.pmEffect)}%p</td>
+
+            </tr>
+
+        `;
+
+    });
+
+
+// ========================================
+// 출력
+// ========================================
 
     app.innerHTML += `
 
@@ -505,6 +684,56 @@ function renderLab(lab, rows){
 
             </div>
 
+
+            <!-- 주차별 평균 -->
+
+            <div class="analysis-box">
+
+                <div class="analysis-title">
+                    주차별 평균 요약
+                </div>
+
+                <div class="table-wrap">
+
+                    <table>
+
+                        <thead>
+
+                            <tr>
+
+                                <th>주차</th>
+
+                                <th>오전 평균 외기습도</th>
+
+                                <th>오전 평균 실내습도</th>
+
+                                <th>오전 평균 제습효과</th>
+
+                                <th>오후 평균 외기습도</th>
+
+                                <th>오후 평균 실내습도</th>
+
+                                <th>오후 평균 제습효과</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody>
+
+                            ${weeklyHtml}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+
+            <!-- 상세 데이터 -->
+
             <div class="analysis-box">
 
                 <div class="analysis-title">
@@ -513,7 +742,7 @@ function renderLab(lab, rows){
 
                 <div class="table-wrap">
 
-                    <table>
+                    <table class="export-table">
 
                         <thead>
 
@@ -572,6 +801,37 @@ function renderLab(lab, rows){
         </div>
 
     `;
+
+}
+
+
+// ========================================
+// 엑셀 다운로드
+// ========================================
+
+function downloadExcel(){
+
+    const wb =
+        XLSX.utils.book_new();
+
+    document.querySelectorAll(".export-table")
+    .forEach((table, idx)=>{
+
+        const ws =
+            XLSX.utils.table_to_sheet(table);
+
+        XLSX.utils.book_append_sheet(
+            wb,
+            ws,
+            `연구실${idx+1}`
+        );
+
+    });
+
+    XLSX.writeFile(
+        wb,
+        "연구실_제습_성능_관리.xlsx"
+    );
 
 }
 
