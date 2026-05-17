@@ -37,7 +37,6 @@ h1{
     padding:15px;
     margin-bottom:30px;
     line-height:1.8;
-    color:#374151;
 }
 
 .lab-section{
@@ -118,7 +117,6 @@ th{
     color:#991b1b;
     padding:20px;
     border-radius:12px;
-    margin-top:20px;
     line-height:1.8;
 }
 
@@ -150,33 +148,26 @@ button:hover{
 <h1>연구실 제습 성능 관리 시스템</h1>
 
 <div class="main-desc">
-인천광역시 중구 북성동1가 기준 기상정보 및 연구실 제습 성능 분석
+인천광역시 중구 북성동1가 기준 연구실 제습 성능 분석
 </div>
 
 <div class="info-box">
 
 <b>습도 측정 기준</b>
+
 <br><br>
 
 - 오전 측정 기준 시간 : 오전 08:00
 <br>
 
 - 오후 측정 기준 시간 : 오후 02:00
+
 <br><br>
 
-※ 접속 당일 기준 Open-Meteo Weather API에서
-오전 08시 / 오후 02시 기상정보를 자동 조회합니다.
+※ 외기온도 및 외기습도는 직접 입력 방식
 <br>
 
-※ Google Sheets 입력값과 자동 비교 분석됩니다.
-
-<br><br>
-
-<b>Google Sheets 입력 양식</b>
-
-<br><br>
-
-날짜 | 오전현재습도 | 오전목표습도 | 오후현재습도 | 오후목표습도 | 비고
+※ 데이터 관리 시작일 : 2026-05-08
 
 </div>
 
@@ -194,8 +185,7 @@ button:hover{
 
 <script>
 
-const LAT = 37.4907;
-const LON = 126.6207;
+const START_DATE = "2026-05-08";
 
 const SPREADSHEET_ID =
 "1nEYNEW9g9omiNviB8yW4Vjd3TecZlSUBIvmMA9DvIfw";
@@ -204,7 +194,6 @@ const SHEET_GID = {
 
     "1연구실":"0",
 
-    // 실제 gid 입력 필요
     "2연구실":"781103558"
 
 };
@@ -225,18 +214,11 @@ const labs = [
 
 ];
 
-let weatherRows = [];
-
 window.onload = () => {
 
     init();
 
 };
-
-
-// ========================================
-// 시작
-// ========================================
 
 async function init(){
 
@@ -245,146 +227,27 @@ async function init(){
         "마지막 업데이트 : " +
         new Date().toLocaleString("ko-KR");
 
-    try{
+    document.getElementById("app").innerHTML = "";
 
-        await loadTodayWeather();
+    for(const lab of labs){
 
-        document.getElementById("app").innerHTML = "";
+        try{
 
-        for(const lab of labs){
+            const rows =
+                await loadGoogleSheet(lab.id);
 
-            try{
+            renderLab(lab, rows);
 
-                const rows =
-                    await loadGoogleSheet(lab.id);
+        }catch(error){
 
-                renderLab(lab, rows);
-
-            }catch(error){
-
-                renderErrorLab(
-                    lab,
-                    error.message
-                );
-
-            }
+            renderErrorLab(
+                lab,
+                error.message
+            );
 
         }
-
-    }catch(error){
-
-        document.getElementById("app").innerHTML =
-        `
-        <div class="error-box">
-
-            데이터 로딩 실패
-            <br><br>
-
-            ${error.message}
-
-        </div>
-        `;
 
     }
-
-}
-
-
-// ========================================
-// 오늘 기상정보 조회
-// ========================================
-
-async function loadTodayWeather(){
-
-    const today = new Date();
-
-    const dateStr =
-        today.getFullYear() + "-" +
-        String(today.getMonth()+1).padStart(2,'0') + "-" +
-        String(today.getDate()).padStart(2,'0');
-
-    const url =
-        `https://api.open-meteo.com/v1/forecast` +
-        `?latitude=${LAT}` +
-        `&longitude=${LON}` +
-        `&hourly=temperature_2m,relative_humidity_2m` +
-        `&timezone=Asia/Seoul` +
-        `&forecast_days=1`;
-
-    const response =
-        await fetch(url);
-
-    if(!response.ok){
-
-        throw new Error(
-            "기상정보 조회 실패"
-        );
-
-    }
-
-    const data =
-        await response.json();
-
-    if(!data.hourly){
-
-        throw new Error(
-            "기상정보 데이터 없음"
-        );
-
-    }
-
-    let amTemp = "";
-    let amHum = "";
-
-    let pmTemp = "";
-    let pmHum = "";
-
-    data.hourly.time.forEach((time, idx)=>{
-
-        const hour =
-            time.slice(11,13);
-
-        // 오전 08시
-        if(hour === "08"){
-
-            amTemp =
-                data.hourly.temperature_2m[idx];
-
-            amHum =
-                data.hourly.relative_humidity_2m[idx];
-
-        }
-
-        // 오후 14시
-        if(hour === "14"){
-
-            pmTemp =
-                data.hourly.temperature_2m[idx];
-
-            pmHum =
-                data.hourly.relative_humidity_2m[idx];
-
-        }
-
-    });
-
-    weatherRows = [
-
-        {
-            date:dateStr,
-
-            month:
-                Number(dateStr.slice(5,7)),
-
-            amTemp:amTemp,
-            amHum:amHum,
-
-            pmTemp:pmTemp,
-            pmHum:pmHum
-
-        }
-
-    ];
 
 }
 
@@ -478,28 +341,19 @@ function renderLab(lab, rows){
 
     let html = "";
 
-    weatherRows.forEach(row=>{
-
-        const matched =
-            rows.find(r =>
-                (r["날짜"] || "").trim()
-                === row.date
-            );
+    rows.forEach(r=>{
 
         const amCurrent =
-            Number(matched?.["오전현재습도"]);
+            Number(r["오전현재습도"]);
 
         const amTarget =
-            Number(matched?.["오전목표습도"]);
+            Number(r["오전목표습도"]);
 
         const pmCurrent =
-            Number(matched?.["오후현재습도"]);
+            Number(r["오후현재습도"]);
 
         const pmTarget =
-            Number(matched?.["오후목표습도"]);
-
-        const memo =
-            matched?.["비고"] || "";
+            Number(r["오후목표습도"]);
 
         const amExists =
             amCurrent && amTarget;
@@ -547,16 +401,13 @@ function renderLab(lab, rows){
 
             <tr>
 
-                <td>${row.date}</td>
-
-                <td>${row.month}월</td>
-
+                <td>${r["날짜"]}</td>
 
                 <!-- 오전 -->
 
-                <td>${row.amTemp}</td>
+                <td>${r["오전외기온도"] || ""}</td>
 
-                <td>${row.amHum}</td>
+                <td>${r["오전외기습도"] || ""}</td>
 
                 <td class="${amClass}">
                     ${amExists ? amCurrent : ""}
@@ -570,8 +421,11 @@ function renderLab(lab, rows){
                     ${
                         amExists
                         ? Math.round(
-                            (row.amHum-amCurrent)*10
-                        )/10
+                            (
+                                Number(r["오전외기습도"])
+                                - amCurrent
+                            ) * 10
+                        ) / 10
                         : ""
                     }
                 </td>
@@ -583,9 +437,9 @@ function renderLab(lab, rows){
 
                 <!-- 오후 -->
 
-                <td>${row.pmTemp}</td>
+                <td>${r["오후외기온도"] || ""}</td>
 
-                <td>${row.pmHum}</td>
+                <td>${r["오후외기습도"] || ""}</td>
 
                 <td class="${pmClass}">
                     ${pmExists ? pmCurrent : ""}
@@ -599,8 +453,11 @@ function renderLab(lab, rows){
                     ${
                         pmExists
                         ? Math.round(
-                            (row.pmHum-pmCurrent)*10
-                        )/10
+                            (
+                                Number(r["오후외기습도"])
+                                - pmCurrent
+                            ) * 10
+                        ) / 10
                         : ""
                     }
                 </td>
@@ -609,7 +466,9 @@ function renderLab(lab, rows){
                     ${pmResult}
                 </td>
 
-                <td>${memo}</td>
+                <td>
+                    ${r["비고"] || ""}
+                </td>
 
             </tr>
 
@@ -635,22 +494,21 @@ function renderLab(lab, rows){
                 <br>
 
                 인천광역시 중구 북성동1가
+
                 <br><br>
 
-                <b>기상정보 자동 연동</b>
+                <b>데이터 입력 방식</b>
+
                 <br>
 
-                Open-Meteo API 기반
-                <br>
-
-                오전 08시 / 오후 02시 기준 조회
+                Google Sheets 수기 입력 기반
 
             </div>
 
             <div class="analysis-box">
 
                 <div class="analysis-title">
-                    당일 상세 데이터
+                    일별 상세 데이터
                 </div>
 
                 <div class="table-wrap">
@@ -663,10 +521,6 @@ function renderLab(lab, rows){
 
                                 <th rowspan="2">
                                     날짜
-                                </th>
-
-                                <th rowspan="2">
-                                    월
                                 </th>
 
                                 <th colspan="6">
