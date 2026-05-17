@@ -164,13 +164,11 @@ button:hover{
 - 오후 측정 기준 시간 : 오후 02:00
 <br><br>
 
-※ 기상정보도 동일하게 오전 08:00 / 오후 02:00 기준으로 자동 조회됩니다.
+※ 접속 당일 기준 Open-Meteo Weather API에서
+오전 08시 / 오후 02시 기상정보를 자동 조회합니다.
 <br>
 
-※ Open-Meteo Weather API 자동 연동
-<br>
-
-※ 데이터 관리 시작일 : 2026-05-15
+※ Google Sheets 입력값과 자동 비교 분석됩니다.
 
 <br><br>
 
@@ -196,10 +194,8 @@ button:hover{
 
 <script>
 
-const START_DATE = "2026-05-15";
-
-const LAT = 37.4738;
-const LON = 126.6215;
+const LAT = 37.4907;
+const LON = 126.6207;
 
 const SPREADSHEET_ID =
 "1nEYNEW9g9omiNviB8yW4Vjd3TecZlSUBIvmMA9DvIfw";
@@ -208,7 +204,7 @@ const SHEET_GID = {
 
     "1연구실":"0",
 
-    // 실제 2연구실 gid 숫자로 변경 필요
+    // 실제 gid 입력 필요
     "2연구실":"781103558"
 
 };
@@ -251,12 +247,10 @@ async function init(){
 
     try{
 
-        // 기상정보 로딩
-        await loadWeatherData();
+        await loadTodayWeather();
 
         document.getElementById("app").innerHTML = "";
 
-        // 연구실별 로딩
         for(const lab of labs){
 
             try{
@@ -283,7 +277,7 @@ async function init(){
         `
         <div class="error-box">
 
-            전체 데이터 로딩 실패
+            데이터 로딩 실패
             <br><br>
 
             ${error.message}
@@ -297,29 +291,25 @@ async function init(){
 
 
 // ========================================
-// 기상 API 조회
+// 오늘 기상정보 조회
 // ========================================
 
-async function loadWeatherData(){
+async function loadTodayWeather(){
 
     const today = new Date();
 
-    const endDate =
+    const dateStr =
         today.getFullYear() + "-" +
         String(today.getMonth()+1).padStart(2,'0') + "-" +
         String(today.getDate()).padStart(2,'0');
-
-    // 기존 archive-api 제거
-    // forecast API 사용으로 변경
-    // CORS 안정성 향상
 
     const url =
         `https://api.open-meteo.com/v1/forecast` +
         `?latitude=${LAT}` +
         `&longitude=${LON}` +
         `&hourly=temperature_2m,relative_humidity_2m` +
-        `&timezone=Asia%2FSeoul` +
-        `&past_days=30`;
+        `&timezone=Asia/Seoul` +
+        `&forecast_days=1`;
 
     const response =
         await fetch(url);
@@ -343,73 +333,58 @@ async function loadWeatherData(){
 
     }
 
-    const dailyMap = {};
+    let amTemp = "";
+    let amHum = "";
+
+    let pmTemp = "";
+    let pmHum = "";
 
     data.hourly.time.forEach((time, idx)=>{
-
-        const date =
-            time.slice(0,10);
-
-        if(date < START_DATE) return;
 
         const hour =
             time.slice(11,13);
 
-        if(!dailyMap[date]){
-
-            dailyMap[date] = {};
-
-        }
-
-        // 오전 08시 기준
+        // 오전 08시
         if(hour === "08"){
 
-            dailyMap[date].amTemp =
+            amTemp =
                 data.hourly.temperature_2m[idx];
 
-            dailyMap[date].amHum =
+            amHum =
                 data.hourly.relative_humidity_2m[idx];
 
         }
 
-        // 오후 14시 기준
+        // 오후 14시
         if(hour === "14"){
 
-            dailyMap[date].pmTemp =
+            pmTemp =
                 data.hourly.temperature_2m[idx];
 
-            dailyMap[date].pmHum =
+            pmHum =
                 data.hourly.relative_humidity_2m[idx];
 
         }
 
     });
 
-    weatherRows =
-        Object.keys(dailyMap).map(date=>{
+    weatherRows = [
 
-            return {
+        {
+            date:dateStr,
 
-                date:date,
+            month:
+                Number(dateStr.slice(5,7)),
 
-                month:
-                    Number(date.slice(5,7)),
+            amTemp:amTemp,
+            amHum:amHum,
 
-                amTemp:
-                    dailyMap[date].amTemp ?? "",
+            pmTemp:pmTemp,
+            pmHum:pmHum
 
-                amHum:
-                    dailyMap[date].amHum ?? "",
+        }
 
-                pmTemp:
-                    dailyMap[date].pmTemp ?? "",
-
-                pmHum:
-                    dailyMap[date].pmHum ?? ""
-
-            };
-
-        });
+    ];
 
 }
 
@@ -501,72 +476,60 @@ function renderLab(lab, rows){
     const app =
         document.getElementById("app");
 
-    let map = {};
-
-    rows.forEach(r=>{
-
-        const date =
-            (r["날짜"] || "").trim();
-
-        map[date] = {
-
-            amCurrent:
-                Number(r["오전현재습도"]),
-
-            amTarget:
-                Number(r["오전목표습도"]),
-
-            pmCurrent:
-                Number(r["오후현재습도"]),
-
-            pmTarget:
-                Number(r["오후목표습도"]),
-
-            memo:
-                r["비고"] || ""
-
-        };
-
-    });
-
     let html = "";
 
     weatherRows.forEach(row=>{
 
-        const manual =
-            map[row.date] || {};
+        const matched =
+            rows.find(r =>
+                (r["날짜"] || "").trim()
+                === row.date
+            );
+
+        const amCurrent =
+            Number(matched?.["오전현재습도"]);
+
+        const amTarget =
+            Number(matched?.["오전목표습도"]);
+
+        const pmCurrent =
+            Number(matched?.["오후현재습도"]);
+
+        const pmTarget =
+            Number(matched?.["오후목표습도"]);
+
+        const memo =
+            matched?.["비고"] || "";
 
         const amExists =
-            manual.amCurrent &&
-            manual.amTarget;
+            amCurrent && amTarget;
 
         const pmExists =
-            manual.pmCurrent &&
-            manual.pmTarget;
+            pmCurrent && pmTarget;
 
         const amResult =
-            amExists
-            ? (
-                manual.amCurrent <= manual.amTarget
+            !amExists
+            ? "미확인"
+            : (
+                amCurrent <= amTarget
                 ? "목표 달성"
                 : "목표 미달"
-            )
-            : "미확인";
+            );
 
         const pmResult =
-            pmExists
-            ? (
-                manual.pmCurrent <= manual.pmTarget
+            !pmExists
+            ? "미확인"
+            : (
+                pmCurrent <= pmTarget
                 ? "목표 달성"
                 : "목표 미달"
-            )
-            : "미확인";
+            );
 
         const amClass =
             !amExists
             ? "none"
             : (
-                manual.amCurrent <= manual.amTarget
+                amCurrent <= amTarget
                 ? "good"
                 : "bad"
             );
@@ -575,7 +538,7 @@ function renderLab(lab, rows){
             !pmExists
             ? "none"
             : (
-                manual.pmCurrent <= manual.pmTarget
+                pmCurrent <= pmTarget
                 ? "good"
                 : "bad"
             );
@@ -596,18 +559,18 @@ function renderLab(lab, rows){
                 <td>${row.amHum}</td>
 
                 <td class="${amClass}">
-                    ${amExists ? manual.amCurrent : ""}
+                    ${amExists ? amCurrent : ""}
                 </td>
 
                 <td class="${amClass}">
-                    ${amExists ? manual.amTarget : ""}
+                    ${amExists ? amTarget : ""}
                 </td>
 
                 <td class="${amClass}">
                     ${
                         amExists
                         ? Math.round(
-                            (row.amHum-manual.amCurrent)*10
+                            (row.amHum-amCurrent)*10
                         )/10
                         : ""
                     }
@@ -625,18 +588,18 @@ function renderLab(lab, rows){
                 <td>${row.pmHum}</td>
 
                 <td class="${pmClass}">
-                    ${pmExists ? manual.pmCurrent : ""}
+                    ${pmExists ? pmCurrent : ""}
                 </td>
 
                 <td class="${pmClass}">
-                    ${pmExists ? manual.pmTarget : ""}
+                    ${pmExists ? pmTarget : ""}
                 </td>
 
                 <td class="${pmClass}">
                     ${
                         pmExists
                         ? Math.round(
-                            (row.pmHum-manual.pmCurrent)*10
+                            (row.pmHum-pmCurrent)*10
                         )/10
                         : ""
                     }
@@ -646,9 +609,7 @@ function renderLab(lab, rows){
                     ${pmResult}
                 </td>
 
-                <td>
-                    ${manual.memo || ""}
-                </td>
+                <td>${memo}</td>
 
             </tr>
 
@@ -679,14 +640,17 @@ function renderLab(lab, rows){
                 <b>기상정보 자동 연동</b>
                 <br>
 
-                오전 08:00 / 오후 02:00 기준 자동 조회
+                Open-Meteo API 기반
+                <br>
+
+                오전 08시 / 오후 02시 기준 조회
 
             </div>
 
             <div class="analysis-box">
 
                 <div class="analysis-title">
-                    일별 상세 데이터
+                    당일 상세 데이터
                 </div>
 
                 <div class="table-wrap">
