@@ -143,31 +143,6 @@ button:hover{
     font-size:13px;
 }
 
-.summary-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-    gap:15px;
-    margin-top:20px;
-}
-
-.summary-item{
-    background:#f9fafb;
-    border:1px solid #d1d5db;
-    border-radius:12px;
-    padding:15px;
-}
-
-.summary-title{
-    font-size:13px;
-    color:#6b7280;
-    margin-bottom:8px;
-}
-
-.summary-value{
-    font-size:24px;
-    font-weight:bold;
-}
-
 </style>
 </head>
 
@@ -196,7 +171,6 @@ button:hover{
 ※ 데이터 관리 시작일 : 2026-05-08
 <br>
 
-
 </div>
 
 <button onclick="location.reload()">
@@ -216,8 +190,6 @@ button:hover{
 </div>
 
 <script>
-
-const START_DATE = "2026-05-08";
 
 const SPREADSHEET_ID =
 "1nEYNEW9g9omiNviB8yW4Vjd3TecZlSUBIvmMA9DvIfw";
@@ -363,23 +335,35 @@ function parseCSV(text){
 
 
 // ========================================
-// 주차 계산
+// 월 기준 주차 계산
 // ========================================
 
-function getWeek(dateStr){
+function getMonthWeek(dateStr){
 
     const date =
         new Date(dateStr);
 
-    const first =
-        new Date(date.getFullYear(),0,1);
+    const year =
+        date.getFullYear();
 
-    const days =
-        Math.floor(
-            (date-first)/(24*60*60*1000)
+    const month =
+        date.getMonth();
+
+    const firstDay =
+        new Date(year, month, 1);
+
+    const firstDate =
+        firstDay.getDate();
+
+    const offset =
+        firstDay.getDay();
+
+    const week =
+        Math.ceil(
+            (date.getDate() + offset) / 7
         );
 
-    return Math.ceil((days+1)/7);
+    return `${month+1}월 ${week}주차`;
 
 }
 
@@ -390,7 +374,11 @@ function getWeek(dateStr){
 
 function avg(arr){
 
-    if(arr.length === 0) return "-";
+    if(arr.length === 0){
+
+        return "-";
+
+    }
 
     return Math.round(
         (
@@ -416,8 +404,19 @@ function renderLab(lab, rows){
     const today =
         new Date();
 
+    // 핵심 수정
+    // timezone 오차 제거
+
+    const koreaToday =
+        new Date(
+            today.getTime()
+            + (9 * 60 * 60 * 1000)
+        );
+
     const todayStr =
-        today.toISOString().split("T")[0];
+        koreaToday
+        .toISOString()
+        .split("T")[0];
 
     let weeklyMap = {};
 
@@ -427,6 +426,7 @@ function renderLab(lab, rows){
             (r["날짜"] || "").trim();
 
         // 오늘 이후 날짜 숨김
+
         if(date > todayStr){
 
             return;
@@ -507,10 +507,13 @@ function renderLab(lab, rows){
                 : "bad"
             );
 
-        // 주차별 평균 계산
+
+// ========================================
+// 주차별 평균 계산
+// ========================================
 
         const week =
-            getWeek(date);
+            getMonthWeek(date);
 
         if(!weeklyMap[week]){
 
@@ -630,7 +633,7 @@ function renderLab(lab, rows){
 
             <tr>
 
-                <td>${week}주차</td>
+                <td>${week}</td>
 
                 <td>${avg(w.amOutside)}%</td>
 
